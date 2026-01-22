@@ -1,0 +1,62 @@
+{
+  "dataset_info": {
+    "total_pairs": 10,
+    "positive_pairs": 5,
+    "negative_pairs": 5,
+    "balance_ratio": 1.0,
+    "file_size_mb": 0.02743244171142578,
+    "has_negative_pairs": true
+  },
+  "preprocessing": {
+    "languages": [
+      "Portuguese",
+      "English",
+      "Hausa",
+      "Yoruba"
+    ],
+    "max_rows_processed": 5,
+    "sampling_strategy": "random",
+    "negative_generation_strategy": "mixed",
+    "negative_ratio": 1.0
+  },
+  "columns": {
+    "total_columns": 25,
+    "column_list": [
+      "mark1_id",
+      "mark2_id",
+      "mark1_wordmark",
+      "mark2_wordmark",
+      "mark1_status",
+      "mark2_status",
+      "mark1_class",
+      "mark2_class",
+      "mark1_presentation",
+      "mark2_presentation",
+      "mark1_date",
+      "mark2_date",
+      "similarity_reason",
+      "label",
+      "mark1_wordmark_en",
+      "mark1_wordmark_ha",
+      "mark1_wordmark_yo",
+      "mark2_wordmark_en",
+      "mark2_wordmark_ha",
+      "mark2_wordmark_yo",
+      "mark1_length",
+      "mark2_length",
+      "same_class",
+      "length_diff",
+      "pair_type"
+    ]
+  },
+  "class_distribution": {
+    "same_class_pairs": 1,
+    "different_class_pairs": 4,
+    "same_class_percentage": 20.0
+  },
+  "length_statistics": {
+    "avg_mark1_length": 10.285714285714286,
+    "avg_mark2_length": 10.0,
+    "avg_length_diff": 4.2
+  }
+}
