@@ -1,0 +1,21 @@
+wordmark,class,goods_services,label,status,filing_date,wordmark_hausa,hausa_confidence,hausa_methods,wordmark_yoruba,yoruba_confidence,yoruba_methods,wordmark_length
+TechFlow,9,Software and apps,1,active,2023-07-20,TechFlow,1.0,{'preserved': 2},TechFlow,1.0,{'preserved': 2},8
+DataSync,42,IT services,1,active,2023-11-08,DataSync,1.0,{'preserved': 2},DataSync,1.0,{'preserved': 2},8
+SmartHub,9,Mobile applications,1,active,2023-05-07,SmartHub,1.0,{'preserved': 2},SmartHub,1.0,{'preserved': 2},8
+CyberLink,42,Internet services,1,active,2023-10-19,CyberLink,1.0,{'preserved': 2},CyberLink,1.0,{'preserved': 2},9
+CyberLinc,42,Internet services,1,active,2023-07-11,CyberLinc,1.0,{'preserved': 2},CyberLinc,1.0,{'preserved': 2},9
+QuickPay,36,Financial services,1,active,2023-11-24,QuickPay,1.0,{'preserved': 2},QuickPay,1.0,{'preserved': 2},8
+QuiccPay,36,Financial services,1,active,2023-05-04,QuiccPay,1.0,{'preserved': 2},QuiccPay,1.0,{'preserved': 2},8
+QuickMart,35,Retail stores,1,active,2023-08-24,QuickMart,1.0,{'preserved': 2},QuickMart,1.0,{'preserved': 2},9
+QuiccMart,35,Retail stores,1,active,2023-03-22,QuiccMart,1.0,{'preserved': 2},QuiccMart,1.0,{'preserved': 2},9
+FastShop,35,Online retail,1,active,2023-05-02,FastShop,1.0,{'preserved': 2},FastShop,1.0,{'preserved': 2},8
+MegaStore,35,Department stores,1,active,2023-08-12,MegaStore,1.0,{'preserved': 2},MegaStore,1.0,{'preserved': 2},9
+SuperMall,35,Shopping centers,1,active,2023-06-02,SuperMall,1.0,{'preserved': 2},SuperMall,1.0,{'preserved': 2},9
+FreshFood,30,Food products,1,active,2023-12-21,FreshFood,1.0,{'preserved': 2},FreshFood,1.0,{'preserved': 2},9
+GoodTaste,43,Restaurant services,1,active,2023-01-12,GoodTaste,1.0,{'preserved': 2},GoodTaste,1.0,{'preserved': 2},9
+PremiumCafe,43,Coffee shop services,1,active,2023-10-22,PremiumCafe,1.0,{'preserved': 2},PremiumCafe,1.0,{'preserved': 2},11
+StyleWear,25,Clothing,1,active,2023-12-25,StyleWear,1.0,{'preserved': 2},StyleWear,1.0,{'preserved': 2},9
+FashionHub,35,Clothing retail,1,active,2023-01-27,FashionHub,1.0,{'preserved': 2},FashionHub,1.0,{'preserved': 2},10
+NaijaMarket,35,Nigerian marketplace,1,active,2023-11-10,NaijaMarket,1.0,{'preserved': 2},NaijaMarket,1.0,{'preserved': 2},11
+NaijaMarcet,35,Nigerian marketplace,1,active,2023-12-28,NaijaMarcet,1.0,{'preserved': 2},NaijaMarcet,1.0,{'preserved': 2},11
+LagosTech,9,Technology services Lagos,1,active,2023-03-12,LagosTech,1.0,{'preserved': 2},LagosTech,1.0,{'preserved': 2},9

@@ -35,25 +35,25 @@ pip-wheel-metadata/
 
 # ── ML Models & Checkpoints ───────────────────────────────────────────────────
 # Model weights and binaries — large files, not tracked in git
-models/*.h5
-models/*.keras
-models/*.pkl
-models/*.pt
-models/*.pth
-models/*.bin
-models/*_tokenizer.pkl
+# models/*.h5
+# models/*.keras
+# models/*.pkl
+# models/*.pt
+# models/*.pth
+# models/*.bin
+# models/*_tokenizer.pkl
 # results/ outputs are small JSON/PNG — kept in git
-!results/
+# !results/
 
 # ── Data files ────────────────────────────────────────────────────────────────
 # Raw / processed CSVs are typically large — exclude from git
-data/*.csv
+# data/*.csv
 # Uncomment to track small reference files:
 # !data/trademark_file.csv
 
 # ── Visualizations (generated outputs) ───────────────────────────────────────
-eda_visualizations/
-eda_visualizations_*/
+# eda_visualizations/
+# eda_visualizations_*/
 
 # ── IDEs & Editors ────────────────────────────────────────────────────────────
 .vscode/settings.json
