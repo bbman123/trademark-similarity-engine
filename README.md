@@ -1,27 +1,64 @@
 # Trademark Similarity Engine
 ## Hybrid CNN+SVM with Multilingual Linguistic AI (EN/HA/YO)
 
-[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+[![Python 3.11](https://img.shields.io/badge/python-3.11-blue.svg)](https://www.python.org/downloads/)
+[![TensorFlow](https://img.shields.io/badge/TensorFlow-2.15.1-orange.svg)](https://www.tensorflow.org/)
+[![PyTorch](https://img.shields.io/badge/PyTorch-2.5.1%2Bcu121-red.svg)](https://pytorch.org/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
-A production-ready AI-powered trademark similarity detection system combining:
-- **Character-level CNN** for visual embedding extraction
-- **SVM** with hybrid features for classification
-- **Enhanced Linguistic Features**: Synonyms, antonyms, phonetics, spelling similarity
-- **Multilingual Support**: English, Hausa, Yoruba semantic analysis
-- **Efficient Retrieval**: Fast candidate selection using approximate nearest neighbors
-- **Explainable Predictions**: Detailed feature breakdown and reasoning
+An AI-powered trademark similarity detection system combining a **character-level Siamese CNN** for visual embedding extraction with an **SVM classifier** that fuses those embeddings with handcrafted multilingual linguistic features.
 
-## 📋 Features
+- **Character-level CNN** — Siamese architecture, learns visual/structural similarity from raw characters
+- **Hybrid SVM** — 138-dimensional feature vector (CNN embeddings + 10 linguistic features)
+- **Multilingual Semantic Analysis** — sentence embeddings in English, Hausa, and Yoruba
+- **Phonetic Matching** — Soundex & Metaphone for sound-alike detection
+- **RESTful API** — FastAPI with async support
 
-- ✅ **Hybrid Architecture**: CNN embeddings + 14+ linguistic features
-- ✅ **Multilingual AI**: Semantic analysis across EN/HA/YO
-- ✅ **Synonym/Antonym Detection**: Domain-specific lexicon for trademark terms
-- ✅ **Phonetic Matching**: Soundex & Metaphone for sound-alike detection
-- ✅ **Explainable AI**: Detailed breakdown of similarity factors
-- ✅ **RESTful API**: FastAPI with async support
-- ✅ **Caching**: Intelligent caching of embeddings and translations
-- ✅ **Production Ready**: Modular, tested, documented
+## 📊 Model Performance (last full run, 29,606 pairs)
+
+| Metric | Value |
+|--------|-------|
+| Test Accuracy | **86.5%** |
+| Precision | **89.7%** |
+| Recall | **82.4%** |
+| F1 Score | **85.9%** |
+| ROC-AUC | **93.5%** |
+
+See [STEP1_2_GUIDE.md](STEP1_2_GUIDE.md) for full training details and output file descriptions.
+
+## 📁 Project Structure
+
+```
+trademark-similarity-engine/
+├── step1_2.ipynb          # Main training notebook (Steps 1–3)
+├── requirements.txt       # Pinned dependencies
+├── STEP1_2_GUIDE.md       # Notebook walkthrough (inputs, outputs, metrics)
+├── ARCHITECTURE.md        # System architecture deep-dive
+│
+├── data/                  # Input & processed CSV files (git-ignored)
+│   └── trademark_file.csv # Source trademark opposition pairs
+├── models/                # Trained model weights (git-ignored)
+│   ├── cnn_encoder.keras
+│   ├── cnn_encoder_tokenizer.pkl
+│   └── hybrid_svm.pkl
+├── results/               # Evaluation metrics & plots
+│   ├── evaluation_results.json
+│   ├── confusion_matrix.png
+│   └── roc_curve.png
+├── notebooks/             # Exploratory / legacy notebooks
+├── scripts/               # CLI tools
+│   ├── inference.py
+│   ├── examples.py
+│   └── test_system.py
+└── src/                   # Library modules
+    ├── api_service.py
+    ├── cnn_encoder.py
+    ├── svm_classifier.py
+    ├── linguistic_features.py
+    ├── retrieval.py
+    ├── cache_manager.py
+    └── config.py
+```
 
 ## 🚀 Quick Start
 
@@ -39,26 +76,32 @@ python -m venv .venv
 
 # Install dependencies
 pip install -r requirements.txt
+
+# GPU support (CUDA 12.1, NVIDIA driver >= 555)
+pip install --index-url https://download.pytorch.org/whl/cu121 \
+    torch==2.5.1 torchvision==0.20.1 torchaudio==2.5.1
 ```
 
-### 2. Verify Models
+### 2. Train the Model
 
-Ensure trained models are in the `models/` directory:
-- `cnn_encoder.keras` (CNN model)
-- `cnn_encoder_tokenizer.pkl` (Tokenizer)
-- `hybrid_svm.pkl` (SVM + scaler)
+Open `step1_2.ipynb` in VS Code or Jupyter and run the cells in order:
+- **Cell 1** — environment setup
+- **Cell 3** — preprocesses `data/trademark_file.csv`, generates features, saves processed CSV
+- **Cell 4** — trains CNN encoder + SVM, saves models to `models/`
+
+See [STEP1_2_GUIDE.md](STEP1_2_GUIDE.md) for a full walkthrough.
 
 ### 3. Command-Line Inference
 
 ```bash
 # Basic similarity check
-python inference.py --mark1 "SuperCoffee" --mark2 "Super Coffee"
+python scripts/inference.py --mark1 "SuperCoffee" --mark2 "Super Coffee"
 
 # With detailed explanation
-python inference.py --mark1 "TechSmart" --mark2 "SmartTech" --details
+python scripts/inference.py --mark1 "TechSmart" --mark2 "SmartTech" --details
 
 # JSON output
-python inference.py --mark1 "BrandA" --mark2 "BrandB" --json --details
+python scripts/inference.py --mark1 "BrandA" --mark2 "BrandB" --json --details
 ```
 
 ### 4. Start API Server
@@ -163,30 +206,28 @@ curl "http://localhost:8000/features?mark1=Coffee&mark2=Cafe"
             └───────────────────────────────┘
 ```
 
-## 📊 Model Performance
-
-Based on test set evaluation:
-- **Accuracy**: 73.3%
-- **Precision**: 66.7%
-- **Recall**: 85.7% (prioritizes catching similar marks)
-- **F1 Score**: 75.0%
-- **ROC-AUC**: 89.3%
+## � Module Overview
 
 ## 🔧 Module Overview
 
 ```
 src/
-├── __init__.py                    # Package initialization
-├── config.py                       # Configuration management
-├── cache_manager.py                # Caching system with TTL
-├── cnn_encoder.py                  # CNN embedding extraction
-├── linguistic_features.py          # 14+ linguistic features + synonyms/antonyms
-├── svm_classifier.py               # Hybrid CNN+SVM classifier
-├── retrieval.py                    # Candidate retrieval system
-└── api_service.py                  # FastAPI REST API
+├── config.py              # Configuration management
+├── cache_manager.py       # Caching system with TTL
+├── cnn_encoder.py         # CNN embedding extraction
+├── linguistic_features.py # 14+ linguistic features + synonyms/antonyms
+├── svm_classifier.py      # Hybrid CNN+SVM classifier
+├── retrieval.py           # Candidate retrieval system
+└── api_service.py         # FastAPI REST API
 
-inference.py                        # CLI inference script
-requirements.txt                    # Dependencies
+scripts/
+├── inference.py           # CLI inference script
+├── examples.py            # Usage examples
+└── test_system.py         # Module validation tests
+
+step1_2.ipynb              # Main training pipeline notebook
+requirements.txt           # Pinned dependencies
+STEP1_2_GUIDE.md           # Pipeline walkthrough
 ```
 
 ## 🎯 Features Extracted

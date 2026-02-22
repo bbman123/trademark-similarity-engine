@@ -30,8 +30,8 @@
         ┌───────────┴──────────┐                          │ • Embedding ANN      │
         │                      │                          │ • Phonetic Buckets   │
         ▼                      ▼                          │ • N-gram Filtering   │
-┌──────────────┐    ┌──────────────────┐                │ • Hybrid Scoring     │
-│ CNN ENCODER  │    │ LINGUISTIC FEAT. │                └──────────────────────┘
+┌──────────────┐    ┌──────────────────┐                  │ • Hybrid Scoring     │
+│ CNN ENCODER  │    │ LINGUISTIC FEAT. │                  └──────────────────────┘
 │              │    │                  │                              │
 │ Character    │    │ 14+ Features:    │                              ▼
 │ Embeddings   │    │ • Synonyms       │                    ┌──────────────────┐
