@@ -374,13 +374,6 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 - **UI Design**: Inspired by modern web applications
 - **Icons**: Lucide React icon library
 
-## 📞 Support
-
-For issues, questions, or suggestions:
-- Open an issue on GitHub
-- Check the API documentation at `/docs`
-- Review the troubleshooting section
-
 ---
 
 <div align="center">
