@@ -1,0 +1,91 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-gradient-to-br from-gray-50 via-blue-50 to-gray-100 min-h-screen;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+  }
+}
+
+@layer components {
+  .card {
+    @apply bg-white rounded-xl shadow-lg border border-gray-200 p-6 transition-all duration-300 hover:shadow-xl;
+  }
+  
+  .btn-primary {
+    @apply bg-gradient-to-r from-primary-600 to-primary-700 text-white px-6 py-3 rounded-lg font-semibold 
+           hover:from-primary-700 hover:to-primary-800 transition-all duration-300 
+           focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2
+           disabled:opacity-50 disabled:cursor-not-allowed shadow-md hover:shadow-lg;
+  }
+  
+  .btn-secondary {
+    @apply bg-white text-gray-700 px-6 py-3 rounded-lg font-semibold border-2 border-gray-300
+           hover:bg-gray-50 hover:border-gray-400 transition-all duration-300
+           focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-offset-2
+           disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+  
+  .input-field {
+    @apply w-full px-4 py-3 rounded-lg border-2 border-gray-300 
+           focus:border-primary-500 focus:ring-2 focus:ring-primary-200 
+           transition-all duration-200 outline-none
+           placeholder:text-gray-400;
+  }
+  
+  .badge {
+    @apply px-3 py-1 rounded-full text-sm font-semibold inline-flex items-center gap-1;
+  }
+  
+  .badge-high {
+    @apply bg-danger-100 text-danger-800 border border-danger-300;
+  }
+  
+  .badge-medium {
+    @apply bg-warning-100 text-warning-800 border border-warning-300;
+  }
+  
+  .badge-low {
+    @apply bg-success-100 text-success-800 border border-success-300;
+  }
+}
+
+@layer utilities {
+  .animate-gradient {
+    background-size: 200% 200%;
+    animation: gradient 3s ease infinite;
+  }
+  
+  @keyframes gradient {
+    0% {
+      background-position: 0% 50%;
+    }
+    50% {
+      background-position: 100% 50%;
+    }
+    100% {
+      background-position: 0% 50%;
+    }
+  }
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f1f5f9;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
