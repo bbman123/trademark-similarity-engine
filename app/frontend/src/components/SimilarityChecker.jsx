@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Search, Loader2, AlertCircle, Info } from 'lucide-react';
 import ResultCard from './ResultCard';
 import AnalysisDetails from './AnalysisDetails';
+import { API_URL } from '../config';
 
 const SimilarityChecker = () => {
   const [mark1, setMark1] = useState('');
@@ -24,7 +25,7 @@ const SimilarityChecker = () => {
     setResult(null);
 
     try {
-      const response = await fetch('/api/similarity-check', {
+      const response = await fetch(`${API_URL}/similarity-check`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

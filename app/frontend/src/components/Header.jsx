@@ -20,7 +20,7 @@ const Header = () => {
           {/* Navigation */}
           <nav className="hidden md:flex items-center space-x-6">
             <a 
-              href="http://localhost:8000/docs" 
+              href="https://buhari123-trademark-similarity-api.hf.space/docs"
               target="_blank"
               className="flex items-center space-x-2 text-gray-600 hover:text-primary-600 transition-colors"
             >

@@ -3,6 +3,7 @@ import Header from './components/Header';
 import SimilarityChecker from './components/SimilarityChecker';
 import BatchChecker from './components/BatchChecker';
 import ApiStatus from './components/ApiStatus';
+import { API_URL } from './config';
 import { CheckCircle2, Layers, Activity } from 'lucide-react';
 
 function App() {
@@ -16,7 +17,7 @@ function App() {
 
   const checkApiHealth = async () => {
     try {
-      const response = await fetch('/api/health');
+      const response = await fetch(`${API_URL}/health`);
       const data = await response.json();
       setApiStatus({ status: 'healthy', data });
     } catch (error) {

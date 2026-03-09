@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Plus, Trash2, Upload, Loader2, AlertCircle, Download } from 'lucide-react';
+import { API_URL } from '../config';
 
 const BatchChecker = () => {
   const [pairs, setPairs] = useState([
@@ -44,7 +45,7 @@ const BatchChecker = () => {
     setResults(null);
 
     try {
-      const response = await fetch('/api/batch-similarity', {
+      const response = await fetch(`${API_URL}/batch-similarity`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
