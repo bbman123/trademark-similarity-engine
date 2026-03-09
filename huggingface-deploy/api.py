@@ -150,20 +150,50 @@ class HybridModelLoader:
     
     def _load_cnn(self):
         """Load CNN model and tokenizer"""
-        cnn_path = self.models_dir / "cnn_encoder.keras"
         tokenizer_path = self.models_dir / "cnn_encoder_tokenizer.pkl"
         
-        if not cnn_path.exists():
-            raise FileNotFoundError(f"CNN model not found at {cnn_path}")
+        # Try loading different model formats
+        model_paths = [
+            self.models_dir / "best_cnn_model.h5",
+            self.models_dir / "cnn_encoder.keras"
+        ]
         
-        # Load full CNN model with safe_mode=False to allow Lambda layers
-        self.cnn_model = keras.models.load_model(str(cnn_path), safe_mode=False)
+        loaded = False
+        for cnn_path in model_paths:
+            if not cnn_path.exists():
+                logger.warning(f"   Model not found: {cnn_path}")
+                continue
+                
+            try:
+                logger.info(f"   Attempting to load: {cnn_path.name}")
+                # Load with compile=False to avoid optimizer issues
+                self.cnn_model = keras.models.load_model(
+                    str(cnn_path), 
+                    safe_mode=False,
+                    compile=False
+                )
+                
+                # Try to extract encoder layer if it exists
+                try:
+                    self.cnn_encoder = keras.models.Model(
+                        inputs=self.cnn_model.get_layer('cnn_encoder').input,
+                        outputs=self.cnn_model.get_layer('cnn_encoder').output
+                    )
+                except:
+                    # If no separate encoder layer, use the full model
+                    logger.info("   Using full model as encoder")
+                    self.cnn_encoder = self.cnn_model
+                
+                loaded = True
+                logger.info(f"   ✓ Loaded CNN model from: {cnn_path.name}")
+                break
+                
+            except Exception as e:
+                logger.warning(f"   Failed to load {cnn_path.name}: {e}")
+                continue
         
-        # Extract encoder part (cnn_encoder layer)
-        self.cnn_encoder = keras.models.Model(
-            inputs=self.cnn_model.get_layer('cnn_encoder').input,
-            outputs=self.cnn_model.get_layer('cnn_encoder').output
-        )
+        if not loaded:
+            raise FileNotFoundError("Could not load any CNN model file")
         
         # Load tokenizer
         if not tokenizer_path.exists():
