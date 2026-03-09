@@ -8,7 +8,7 @@ export default defineConfig({
     port: 3000,
     proxy: {
       '/api': {
-        target: 'http://localhost:8000',
+        target: 'https://buhari123-trademark-similarity-api.hf.space',
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api/, ''),
       },
