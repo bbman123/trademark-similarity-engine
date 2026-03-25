@@ -12,6 +12,7 @@ RUN pip install --no-cache-dir --upgrade -r /code/requirements.txt
 COPY api.py /code/api.py
 COPY src /code/src
 COPY models /code/models
+COPY data /code/data
 
 # Expose port (Hugging Face uses 7860)
 EXPOSE 7860

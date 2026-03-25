@@ -1,38 +1,33 @@
 import React from 'react';
-import { CheckCircle2, XCircle, Loader2, RefreshCw } from 'lucide-react';
+import { CheckCircle2, AlertCircle, Loader2, RefreshCw } from 'lucide-react';
 
 const ApiStatus = ({ status, onRetry }) => {
   if (status.status === 'checking') {
     return (
-      <div className="inline-flex items-center gap-2 px-4 py-2 bg-blue-50 border border-blue-200 rounded-lg">
-        <Loader2 className="w-4 h-4 animate-spin text-blue-600" />
-        <span className="text-sm font-medium text-blue-700">Checking API status...</span>
+      <div className="inline-flex items-center gap-2 px-4 py-2 bg-blue-50 border border-blue-200 rounded-full text-sm text-blue-700">
+        <Loader2 className="w-4 h-4 animate-spin" />
+        <span>Connecting to API...</span>
       </div>
     );
   }
 
   if (status.status === 'error') {
     return (
-      <div className="inline-flex items-center gap-3 px-4 py-2 bg-red-50 border border-red-200 rounded-lg">
-        <XCircle className="w-4 h-4 text-red-600" />
-        <span className="text-sm font-medium text-red-700">API unavailable</span>
-        <button
-          onClick={onRetry}
-          className="ml-2 p-1 hover:bg-red-100 rounded transition-colors"
-          title="Retry connection"
-        >
-          <RefreshCw className="w-3.5 h-3.5 text-red-600" />
+      <div className="inline-flex items-center gap-2 px-4 py-2 bg-red-50 border border-red-200 rounded-full text-sm text-red-700">
+        <AlertCircle className="w-4 h-4" />
+        <span>API unavailable</span>
+        <button onClick={onRetry} className="ml-1 hover:text-red-900">
+          <RefreshCw className="w-3.5 h-3.5" />
         </button>
       </div>
     );
   }
 
+  const dbSize = status.data?.database_size;
   return (
-    <div className="inline-flex items-center gap-2 px-4 py-2 bg-green-50 border border-green-200 rounded-lg">
-      <CheckCircle2 className="w-4 h-4 text-green-600" />
-      <span className="text-sm font-medium text-green-700">
-        API Online • Models Loaded
-      </span>
+    <div className="inline-flex items-center gap-2 px-4 py-2 bg-green-50 border border-green-200 rounded-full text-sm text-green-700">
+      <CheckCircle2 className="w-4 h-4" />
+      <span>System Online{dbSize ? ` \u2022 ${dbSize.toLocaleString()} trademarks in database` : ''}</span>
     </div>
   );
 };
