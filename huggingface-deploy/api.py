@@ -48,8 +48,6 @@ class RegistrationRequest(BaseModel):
     """Request to check trademark registration eligibility"""
     trademarks: List[str] = Field(
         ...,
-        min_length=1,
-        max_length=3,
         description="List of 1-3 trademark names to check for registration"
     )
     threshold: float = Field(
@@ -81,6 +79,8 @@ class RegistrationRequest(BaseModel):
         cleaned = [t.strip() for t in v if t.strip()]
         if not cleaned:
             raise ValueError('At least one non-empty trademark name is required')
+        if len(cleaned) > 3:
+            raise ValueError('Maximum 3 trademarks allowed per request')
         return cleaned
 
 
@@ -134,6 +134,8 @@ class SimilarityResponse(BaseModel):
 
 class HealthResponse(BaseModel):
     """Health check response"""
+    model_config = ConfigDict(protected_namespaces=())
+
     status: str
     timestamp: str
     models_loaded: bool

@@ -36,7 +36,7 @@ logger = logging.getLogger(__name__)
 # ============================================================================
 
 class RegistrationRequest(BaseModel):
-    trademarks: List[str] = Field(..., min_length=1, max_length=3)
+    trademarks: List[str] = Field(..., description="List of 1-3 trademark names to check for registration")
     threshold: float = Field(default=0.7, ge=0.0, le=1.0)
     top_k: int = Field(default=5, ge=1, le=20)
 
@@ -46,6 +46,8 @@ class RegistrationRequest(BaseModel):
         cleaned = [t.strip() for t in v if t.strip()]
         if not cleaned:
             raise ValueError('At least one non-empty trademark name is required')
+        if len(cleaned) > 3:
+            raise ValueError('Maximum 3 trademarks allowed per request')
         return cleaned
 
 
@@ -93,6 +95,7 @@ class SimilarityResponse(BaseModel):
 
 
 class HealthResponse(BaseModel):
+    model_config = ConfigDict(protected_namespaces=())
     status: str
     timestamp: str
     models_loaded: bool
