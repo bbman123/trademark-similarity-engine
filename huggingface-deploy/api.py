@@ -278,8 +278,11 @@ class HybridModelLoader:
             len_diff, len(m1), len(m2)
         ])
 
-    def extract_linguistic_features_detail(self, mark1: str, mark2: str) -> Dict[str, Any]:
-        """Extract linguistic features as a detailed dict"""
+    def extract_linguistic_features_detail(
+        self, mark1: str, mark2: str,
+        mark2_ha: str = "", mark2_yo: str = ""
+    ) -> Dict[str, Any]:
+        """Extract linguistic features with actual per-language semantic similarities"""
         m1, m2 = mark1.lower(), mark2.lower()
 
         levenshtein_dist = jellyfish.levenshtein_distance(m1, m2)
@@ -293,9 +296,24 @@ class HybridModelLoader:
         except Exception:
             metaphone_match = False
 
+        # Compute actual per-language semantic similarities using multilingual model
         emb1 = self.semantic_model.encode([mark1], convert_to_numpy=True)
-        emb2 = self.semantic_model.encode([mark2], convert_to_numpy=True)
-        semantic_sim = float(sklearn_cosine_similarity(emb1, emb2)[0][0])
+        emb2_en = self.semantic_model.encode([mark2], convert_to_numpy=True)
+        sim_en = float(sklearn_cosine_similarity(emb1, emb2_en)[0][0])
+
+        # Hausa: compare against HA variant if available and different
+        if mark2_ha and mark2_ha.lower() != mark2.lower():
+            emb2_ha = self.semantic_model.encode([mark2_ha], convert_to_numpy=True)
+            sim_ha = float(sklearn_cosine_similarity(emb1, emb2_ha)[0][0])
+        else:
+            sim_ha = sim_en
+
+        # Yoruba: compare against YO variant if available and different
+        if mark2_yo and mark2_yo.lower() != mark2.lower():
+            emb2_yo = self.semantic_model.encode([mark2_yo], convert_to_numpy=True)
+            sim_yo = float(sklearn_cosine_similarity(emb1, emb2_yo)[0][0])
+        else:
+            sim_yo = sim_en
 
         return {
             "visual_features": {
@@ -307,9 +325,9 @@ class HybridModelLoader:
                 "metaphone_match": bool(metaphone_match)
             },
             "semantic_features": {
-                "similarity_en": round(semantic_sim, 4),
-                "similarity_ha": round(semantic_sim, 4),
-                "similarity_yo": round(semantic_sim, 4)
+                "similarity_en": round(sim_en, 4),
+                "similarity_ha": round(sim_ha, 4),
+                "similarity_yo": round(sim_yo, 4)
             },
             "length_features": {
                 "length_difference": abs(len(m1) - len(m2)),
@@ -318,20 +336,42 @@ class HybridModelLoader:
             }
         }
 
-    def predict(self, mark1: str, mark2: str, return_details: bool = False):
-        """Predict similarity between two trademarks"""
+    def predict(
+        self, mark1: str, mark2: str,
+        mark2_ha: str = "", mark2_yo: str = "",
+        return_details: bool = False
+    ):
+        """Predict similarity between two trademarks, checking all language variants"""
         emb1 = self.encode_text(mark1)
+
+        # Score against primary wordmark
         emb2 = self.encode_text(mark2)
         ling_features = self.extract_linguistic_features(mark1, mark2)
-
         hybrid_features = np.concatenate([emb1, emb2, ling_features]).reshape(1, -1)
         scaled_features = self.scaler.transform(hybrid_features)
         label = int(self.svm_model.predict(scaled_features)[0])
         probability = float(self.svm_model.predict_proba(scaled_features)[0][1])
 
+        # Also score against HA/YO variants — take the MAX probability
+        for variant in [mark2_ha, mark2_yo]:
+            if variant and variant.strip() and variant.lower() != mark2.lower():
+                try:
+                    emb_var = self.encode_text(variant)
+                    ling_var = self.extract_linguistic_features(mark1, variant)
+                    hybrid_var = np.concatenate([emb1, emb_var, ling_var]).reshape(1, -1)
+                    scaled_var = self.scaler.transform(hybrid_var)
+                    prob_var = float(self.svm_model.predict_proba(scaled_var)[0][1])
+                    if prob_var > probability:
+                        probability = prob_var
+                        label = int(self.svm_model.predict(scaled_var)[0])
+                except Exception:
+                    pass
+
         details = None
         if return_details:
-            details = self.extract_linguistic_features_detail(mark1, mark2)
+            details = self.extract_linguistic_features_detail(
+                mark1, mark2, mark2_ha=mark2_ha, mark2_yo=mark2_yo
+            )
 
         return label, probability, details
 
@@ -346,10 +386,14 @@ class TrademarkDatabase:
     def __init__(self):
         self.trademarks: List[Dict[str, str]] = []
         self.embeddings: Optional[np.ndarray] = None
+        # Variant embeddings: CNN embeddings for HA/YO columns where they differ
+        self.variant_embeddings: Optional[np.ndarray] = None
+        self.variant_to_trademark_idx: List[int] = []  # maps variant row -> original trademark index
+        self.variant_lang: List[str] = []  # maps variant row -> language code
         self.loaded = False
 
     def load(self, csv_path: str, model_loader: HybridModelLoader):
-        """Load trademarks from CSV and pre-compute CNN embeddings"""
+        """Load trademarks from CSV and pre-compute CNN embeddings for all language variants"""
         logger.info(f"Loading trademark database from {csv_path}...")
 
         df = pd.read_csv(csv_path)
@@ -359,28 +403,73 @@ class TrademarkDatabase:
         self.trademarks = df.to_dict('records')
         logger.info(f"   Loaded {len(self.trademarks)} registered trademarks")
 
-        logger.info("   Pre-computing CNN embeddings for database...")
+        # Primary embeddings (wordmark column)
+        logger.info("   Pre-computing CNN embeddings for primary wordmarks...")
         texts = [tm['wordmark'] for tm in self.trademarks]
         self.embeddings = model_loader.encode_texts_batch(texts)
-        logger.info(f"   Embeddings shape: {self.embeddings.shape}")
+        logger.info(f"   Primary embeddings shape: {self.embeddings.shape}")
+
+        # Variant embeddings for HA/YO where they differ from primary
+        variant_texts = []
+        self.variant_to_trademark_idx = []
+        self.variant_lang = []
+        for i, tm in enumerate(self.trademarks):
+            primary = tm['wordmark'].strip().lower()
+            for lang_col, lang_code in [('wordmark_ha', 'ha'), ('wordmark_yo', 'yo')]:
+                variant = str(tm.get(lang_col, '')).strip()
+                if variant and variant.lower() != primary:
+                    variant_texts.append(variant)
+                    self.variant_to_trademark_idx.append(i)
+                    self.variant_lang.append(lang_code)
+
+        if variant_texts:
+            logger.info(f"   Pre-computing CNN embeddings for {len(variant_texts)} language variants...")
+            self.variant_embeddings = model_loader.encode_texts_batch(variant_texts)
+            logger.info(f"   Variant embeddings shape: {self.variant_embeddings.shape}")
+        else:
+            self.variant_embeddings = None
+            logger.info("   No language variants found")
 
         self.loaded = True
         logger.info("[SUCCESS] Trademark database ready")
 
     def find_candidates(self, query_embedding: np.ndarray, top_k: int = 20) -> List[Dict]:
-        """Find top-K most similar trademarks using cosine similarity on CNN embeddings"""
+        """Find top-K most similar trademarks by searching across ALL language variants"""
         query_norm = query_embedding / (np.linalg.norm(query_embedding) + 1e-10)
-        db_norms = self.embeddings / (np.linalg.norm(self.embeddings, axis=1, keepdims=True) + 1e-10)
-        similarities = np.dot(db_norms, query_norm)
 
-        top_indices = np.argsort(similarities)[::-1][:top_k]
+        # Search primary embeddings
+        db_norms = self.embeddings / (np.linalg.norm(self.embeddings, axis=1, keepdims=True) + 1e-10)
+        primary_sims = np.dot(db_norms, query_norm)
+
+        # Track best similarity per trademark index
+        best_sim = dict(enumerate(primary_sims.tolist()))
+        match_lang = {i: 'primary' for i in range(len(self.trademarks))}
+
+        # Search variant embeddings (HA/YO)
+        if self.variant_embeddings is not None and len(self.variant_embeddings) > 0:
+            var_norms = self.variant_embeddings / (
+                np.linalg.norm(self.variant_embeddings, axis=1, keepdims=True) + 1e-10
+            )
+            var_sims = np.dot(var_norms, query_norm)
+            for vi, sim_val in enumerate(var_sims):
+                tm_idx = self.variant_to_trademark_idx[vi]
+                if sim_val > best_sim.get(tm_idx, -1):
+                    best_sim[tm_idx] = float(sim_val)
+                    match_lang[tm_idx] = self.variant_lang[vi]
+
+        # Sort by best similarity and take top_k
+        sorted_indices = sorted(best_sim.keys(), key=lambda i: best_sim[i], reverse=True)[:top_k]
 
         candidates = []
-        for idx in top_indices:
+        for idx in sorted_indices:
+            tm = self.trademarks[idx]
             candidates.append({
-                'index': int(idx),
-                'trademark': self.trademarks[idx]['wordmark'],
-                'embedding_similarity': float(similarities[idx]),
+                'index': idx,
+                'trademark': tm['wordmark'],
+                'trademark_ha': str(tm.get('wordmark_ha', '')).strip(),
+                'trademark_yo': str(tm.get('wordmark_yo', '')).strip(),
+                'embedding_similarity': best_sim[idx],
+                'matched_lang': match_lang[idx],
             })
         return candidates
 
@@ -556,7 +645,7 @@ async def check_registration(request: RegistrationRequest):
 
 def _evaluate_trademark(tm_name: str, threshold: float, top_k: int) -> TrademarkDecision:
     """Evaluate a single trademark against the database"""
-    # Stage 1: Fast retrieval using CNN embeddings
+    # Stage 1: Fast retrieval using CNN embeddings (searches all language variants)
     query_embedding = model_loader.encode_text(tm_name)
     candidates = trademark_db.find_candidates(query_embedding, top_k=max(top_k, 20))
 
@@ -564,9 +653,13 @@ def _evaluate_trademark(tm_name: str, threshold: float, top_k: int) -> Trademark
     scored_matches = []
     for candidate in candidates:
         existing_mark = candidate['trademark']
+        existing_ha = candidate.get('trademark_ha', '')
+        existing_yo = candidate.get('trademark_yo', '')
         try:
             _, probability, details = model_loader.predict(
-                tm_name, existing_mark, return_details=True
+                tm_name, existing_mark,
+                mark2_ha=existing_ha, mark2_yo=existing_yo,
+                return_details=True
             )
             scored_matches.append({
                 'trademark': existing_mark,

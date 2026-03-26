@@ -189,24 +189,55 @@ class HybridModelLoader:
         return np.array([levenshtein_dist, jaro_winkler, soundex_match, metaphone_match,
                          semantic_sim, semantic_sim, semantic_sim, len_diff, len(m1), len(m2)])
 
-    def predict(self, mark1, mark2, return_details=False):
+    def predict(self, mark1, mark2, mark2_ha="", mark2_yo="", return_details=False):
         emb1 = self.encode_text(mark1)
+
+        # Score against primary wordmark
         emb2 = self.encode_text(mark2)
         ling = self.extract_linguistic_features(mark1, mark2)
         hybrid = np.concatenate([emb1, emb2, ling]).reshape(1, -1)
         scaled = self.scaler.transform(hybrid)
         label = int(self.svm_model.predict(scaled)[0])
         prob = float(self.svm_model.predict_proba(scaled)[0][1])
+
+        # Also score against HA/YO variants — take the MAX probability
+        for variant in [mark2_ha, mark2_yo]:
+            if variant and variant.strip() and variant.lower() != mark2.lower():
+                try:
+                    emb_var = self.encode_text(variant)
+                    ling_var = self.extract_linguistic_features(mark1, variant)
+                    hybrid_var = np.concatenate([emb1, emb_var, ling_var]).reshape(1, -1)
+                    scaled_var = self.scaler.transform(hybrid_var)
+                    prob_var = float(self.svm_model.predict_proba(scaled_var)[0][1])
+                    if prob_var > prob:
+                        prob = prob_var
+                        label = int(self.svm_model.predict(scaled_var)[0])
+                except Exception:
+                    pass
+
         details = None
         if return_details:
             m1, m2 = mark1.lower(), mark2.lower()
             e1 = self.semantic_model.encode([mark1], convert_to_numpy=True)
-            e2 = self.semantic_model.encode([mark2], convert_to_numpy=True)
-            sem = float(sklearn_cosine_similarity(e1, e2)[0][0])
+            e2_en = self.semantic_model.encode([mark2], convert_to_numpy=True)
+            sim_en = float(sklearn_cosine_similarity(e1, e2_en)[0][0])
+
+            # Actual per-language semantic similarities
+            if mark2_ha and mark2_ha.lower() != mark2.lower():
+                e2_ha = self.semantic_model.encode([mark2_ha], convert_to_numpy=True)
+                sim_ha = float(sklearn_cosine_similarity(e1, e2_ha)[0][0])
+            else:
+                sim_ha = sim_en
+            if mark2_yo and mark2_yo.lower() != mark2.lower():
+                e2_yo = self.semantic_model.encode([mark2_yo], convert_to_numpy=True)
+                sim_yo = float(sklearn_cosine_similarity(e1, e2_yo)[0][0])
+            else:
+                sim_yo = sim_en
+
             details = {
                 "visual_features": {"levenshtein_distance": int(ling[0]), "jaro_winkler_similarity": round(float(ling[1]), 4)},
                 "phonetic_features": {"soundex_match": bool(ling[2]), "metaphone_match": bool(ling[3])},
-                "semantic_features": {"similarity_en": round(sem, 4), "similarity_ha": round(sem, 4), "similarity_yo": round(sem, 4)},
+                "semantic_features": {"similarity_en": round(sim_en, 4), "similarity_ha": round(sim_ha, 4), "similarity_yo": round(sim_yo, 4)},
                 "length_features": {"length_difference": int(ling[7]), "mark1_length": int(ling[8]), "mark2_length": int(ling[9])}
             }
         return label, prob, details
@@ -216,6 +247,9 @@ class TrademarkDatabase:
     def __init__(self):
         self.trademarks = []
         self.embeddings = None
+        self.variant_embeddings = None
+        self.variant_to_trademark_idx = []
+        self.variant_lang = []
         self.loaded = False
 
     def load(self, csv_path, model_loader):
@@ -223,17 +257,66 @@ class TrademarkDatabase:
         df = df.dropna(subset=['wordmark'])
         df = df[df['wordmark'].str.strip() != '']
         self.trademarks = df.to_dict('records')
+
+        # Primary embeddings
         texts = [tm['wordmark'] for tm in self.trademarks]
         self.embeddings = model_loader.encode_texts_batch(texts)
+
+        # Variant embeddings for HA/YO where they differ
+        variant_texts = []
+        self.variant_to_trademark_idx = []
+        self.variant_lang = []
+        for i, tm in enumerate(self.trademarks):
+            primary = tm['wordmark'].strip().lower()
+            for lang_col, lang_code in [('wordmark_ha', 'ha'), ('wordmark_yo', 'yo')]:
+                variant = str(tm.get(lang_col, '')).strip()
+                if variant and variant.lower() != primary:
+                    variant_texts.append(variant)
+                    self.variant_to_trademark_idx.append(i)
+                    self.variant_lang.append(lang_code)
+
+        if variant_texts:
+            self.variant_embeddings = model_loader.encode_texts_batch(variant_texts)
+            logger.info(f"Database loaded: {len(self.trademarks)} trademarks + {len(variant_texts)} language variants")
+        else:
+            self.variant_embeddings = None
+            logger.info(f"Database loaded: {len(self.trademarks)} trademarks")
+
         self.loaded = True
-        logger.info(f"Database loaded: {len(self.trademarks)} trademarks")
 
     def find_candidates(self, query_embedding, top_k=20):
         query_norm = query_embedding / (np.linalg.norm(query_embedding) + 1e-10)
+
+        # Search primary embeddings
         db_norms = self.embeddings / (np.linalg.norm(self.embeddings, axis=1, keepdims=True) + 1e-10)
-        sims = np.dot(db_norms, query_norm)
-        top_idx = np.argsort(sims)[::-1][:top_k]
-        return [{'index': int(i), 'trademark': self.trademarks[i]['wordmark'], 'embedding_similarity': float(sims[i])} for i in top_idx]
+        primary_sims = np.dot(db_norms, query_norm)
+
+        best_sim = dict(enumerate(primary_sims.tolist()))
+        match_lang = {i: 'primary' for i in range(len(self.trademarks))}
+
+        # Search variant embeddings
+        if self.variant_embeddings is not None and len(self.variant_embeddings) > 0:
+            var_norms = self.variant_embeddings / (np.linalg.norm(self.variant_embeddings, axis=1, keepdims=True) + 1e-10)
+            var_sims = np.dot(var_norms, query_norm)
+            for vi, sim_val in enumerate(var_sims):
+                tm_idx = self.variant_to_trademark_idx[vi]
+                if sim_val > best_sim.get(tm_idx, -1):
+                    best_sim[tm_idx] = float(sim_val)
+                    match_lang[tm_idx] = self.variant_lang[vi]
+
+        sorted_indices = sorted(best_sim.keys(), key=lambda i: best_sim[i], reverse=True)[:top_k]
+        candidates = []
+        for idx in sorted_indices:
+            tm = self.trademarks[idx]
+            candidates.append({
+                'index': idx,
+                'trademark': tm['wordmark'],
+                'trademark_ha': str(tm.get('wordmark_ha', '')).strip(),
+                'trademark_yo': str(tm.get('wordmark_yo', '')).strip(),
+                'embedding_similarity': best_sim[idx],
+                'matched_lang': match_lang[idx],
+            })
+        return candidates
 
 
 model_loader = None
@@ -295,7 +378,12 @@ def _evaluate_trademark(name, threshold, top_k):
     scored = []
     for c in candidates:
         try:
-            _, prob, det = model_loader.predict(name, c['trademark'], return_details=True)
+            _, prob, det = model_loader.predict(
+                name, c['trademark'],
+                mark2_ha=c.get('trademark_ha', ''),
+                mark2_yo=c.get('trademark_yo', ''),
+                return_details=True
+            )
             scored.append({'trademark': c['trademark'], 'similarity_score': round(prob, 4), 'details': det})
         except Exception:
             pass
