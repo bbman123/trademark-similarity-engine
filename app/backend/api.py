@@ -262,27 +262,44 @@ class TrademarkDatabase:
         texts = [tm['wordmark'] for tm in self.trademarks]
         self.embeddings = model_loader.encode_texts_batch(texts)
 
-        # Variant embeddings for HA/YO where they differ
-        variant_texts = []
-        self.variant_to_trademark_idx = []
-        self.variant_lang = []
+        # Variant embeddings with deduplication
+        try:
+            self._build_variant_index(model_loader)
+        except Exception as e:
+            logger.warning(f"Could not build variant index: {e}")
+            self.variant_embeddings = None
+
+        self.loaded = True
+        logger.info(f"Database loaded: {len(self.trademarks)} trademarks")
+
+    def _build_variant_index(self, model_loader):
+        unique_text_to_idx = {}
+        unique_texts = []
+        variant_entries = []
         for i, tm in enumerate(self.trademarks):
             primary = tm['wordmark'].strip().lower()
             for lang_col, lang_code in [('wordmark_ha', 'ha'), ('wordmark_yo', 'yo')]:
                 variant = str(tm.get(lang_col, '')).strip()
-                if variant and variant.lower() != primary:
-                    variant_texts.append(variant)
-                    self.variant_to_trademark_idx.append(i)
-                    self.variant_lang.append(lang_code)
-
-        if variant_texts:
-            self.variant_embeddings = model_loader.encode_texts_batch(variant_texts)
-            logger.info(f"Database loaded: {len(self.trademarks)} trademarks + {len(variant_texts)} language variants")
-        else:
+                if not variant or variant.lower() == primary:
+                    continue
+                key = variant.lower()
+                if key not in unique_text_to_idx:
+                    unique_text_to_idx[key] = len(unique_texts)
+                    unique_texts.append(variant)
+                variant_entries.append((i, lang_code, unique_text_to_idx[key]))
+        if not unique_texts:
             self.variant_embeddings = None
-            logger.info(f"Database loaded: {len(self.trademarks)} trademarks")
-
-        self.loaded = True
+            return
+        unique_embeddings = model_loader.encode_texts_batch(unique_texts)
+        self.variant_to_trademark_idx = []
+        self.variant_lang = []
+        variant_emb_list = []
+        for tm_idx, lang_code, unique_idx in variant_entries:
+            self.variant_to_trademark_idx.append(tm_idx)
+            self.variant_lang.append(lang_code)
+            variant_emb_list.append(unique_embeddings[unique_idx])
+        self.variant_embeddings = np.array(variant_emb_list)
+        logger.info(f"   Variant index: {len(variant_entries)} entries ({len(unique_texts)} unique)")
 
     def find_candidates(self, query_embedding, top_k=20):
         query_norm = query_embedding / (np.linalg.norm(query_embedding) + 1e-10)

@@ -29,13 +29,16 @@ import jellyfish
 from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity as sklearn_cosine_similarity
 
-# Setup logging
+import sys
+import time as _time
+import threading
+
+# Setup logging - use StreamHandler with flush for HuggingFace
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler('api.log', encoding='utf-8'),
-        logging.StreamHandler()
+        logging.StreamHandler(sys.stdout),
     ]
 )
 logger = logging.getLogger(__name__)
@@ -393,7 +396,7 @@ class TrademarkDatabase:
         self.loaded = False
 
     def load(self, csv_path: str, model_loader: HybridModelLoader):
-        """Load trademarks from CSV and pre-compute CNN embeddings for all language variants"""
+        """Load trademarks from CSV and pre-compute CNN embeddings (primary only for fast startup)"""
         logger.info(f"Loading trademark database from {csv_path}...")
 
         df = pd.read_csv(csv_path)
@@ -403,35 +406,70 @@ class TrademarkDatabase:
         self.trademarks = df.to_dict('records')
         logger.info(f"   Loaded {len(self.trademarks)} registered trademarks")
 
-        # Primary embeddings (wordmark column)
+        # Primary embeddings (wordmark column) — required for basic search
         logger.info("   Pre-computing CNN embeddings for primary wordmarks...")
         texts = [tm['wordmark'] for tm in self.trademarks]
         self.embeddings = model_loader.encode_texts_batch(texts)
         logger.info(f"   Primary embeddings shape: {self.embeddings.shape}")
 
-        # Variant embeddings for HA/YO where they differ from primary
-        variant_texts = []
-        self.variant_to_trademark_idx = []
-        self.variant_lang = []
+        self.loaded = True
+        logger.info("[SUCCESS] Trademark database ready (primary)")
+
+    def load_variants_background(self, model_loader: HybridModelLoader):
+        """Build variant embeddings in background thread (non-blocking)"""
+        try:
+            logger.info("[BACKGROUND] Starting variant embedding computation...")
+            sys.stdout.flush()
+            t0 = _time.time()
+            self._build_variant_index(model_loader)
+            logger.info(f"[BACKGROUND] Variant index ready in {_time.time() - t0:.1f}s")
+            sys.stdout.flush()
+        except Exception as e:
+            logger.warning(f"[BACKGROUND] Variant index failed: {e}")
+            logger.warning("[BACKGROUND] Cross-language search not available")
+            self.variant_embeddings = None
+            sys.stdout.flush()
+
+    def _build_variant_index(self, model_loader: HybridModelLoader):
+        """Build deduplicated variant embedding index for cross-language search"""
+        # Collect unique variant texts and map them back
+        unique_text_to_idx: Dict[str, int] = {}  # lowered text -> index in unique list
+        unique_texts: List[str] = []
+        variant_entries: List[tuple] = []  # (trademark_idx, lang_code, unique_text_idx)
+
         for i, tm in enumerate(self.trademarks):
             primary = tm['wordmark'].strip().lower()
             for lang_col, lang_code in [('wordmark_ha', 'ha'), ('wordmark_yo', 'yo')]:
                 variant = str(tm.get(lang_col, '')).strip()
-                if variant and variant.lower() != primary:
-                    variant_texts.append(variant)
-                    self.variant_to_trademark_idx.append(i)
-                    self.variant_lang.append(lang_code)
+                if not variant or variant.lower() == primary:
+                    continue
+                key = variant.lower()
+                if key not in unique_text_to_idx:
+                    unique_text_to_idx[key] = len(unique_texts)
+                    unique_texts.append(variant)
+                variant_entries.append((i, lang_code, unique_text_to_idx[key]))
 
-        if variant_texts:
-            logger.info(f"   Pre-computing CNN embeddings for {len(variant_texts)} language variants...")
-            self.variant_embeddings = model_loader.encode_texts_batch(variant_texts)
-            logger.info(f"   Variant embeddings shape: {self.variant_embeddings.shape}")
-        else:
-            self.variant_embeddings = None
+        if not unique_texts:
             logger.info("   No language variants found")
+            self.variant_embeddings = None
+            return
 
-        self.loaded = True
-        logger.info("[SUCCESS] Trademark database ready")
+        logger.info(f"   Found {len(variant_entries)} variant entries ({len(unique_texts)} unique texts)")
+        logger.info(f"   Computing CNN embeddings for {len(unique_texts)} unique variants...")
+        unique_embeddings = model_loader.encode_texts_batch(unique_texts)
+        logger.info(f"   Unique variant embeddings computed: {unique_embeddings.shape}")
+
+        # Expand back: each variant entry gets the embedding of its unique text
+        self.variant_to_trademark_idx = []
+        self.variant_lang = []
+        variant_emb_list = []
+        for tm_idx, lang_code, unique_idx in variant_entries:
+            self.variant_to_trademark_idx.append(tm_idx)
+            self.variant_lang.append(lang_code)
+            variant_emb_list.append(unique_embeddings[unique_idx])
+
+        self.variant_embeddings = np.array(variant_emb_list)
+        logger.info(f"   Variant index built: {self.variant_embeddings.shape}")
 
     def find_candidates(self, query_embedding: np.ndarray, top_k: int = 20) -> List[Dict]:
         """Find top-K most similar trademarks by searching across ALL language variants"""
@@ -445,17 +483,20 @@ class TrademarkDatabase:
         best_sim = dict(enumerate(primary_sims.tolist()))
         match_lang = {i: 'primary' for i in range(len(self.trademarks))}
 
-        # Search variant embeddings (HA/YO)
-        if self.variant_embeddings is not None and len(self.variant_embeddings) > 0:
-            var_norms = self.variant_embeddings / (
-                np.linalg.norm(self.variant_embeddings, axis=1, keepdims=True) + 1e-10
-            )
-            var_sims = np.dot(var_norms, query_norm)
-            for vi, sim_val in enumerate(var_sims):
-                tm_idx = self.variant_to_trademark_idx[vi]
-                if sim_val > best_sim.get(tm_idx, -1):
-                    best_sim[tm_idx] = float(sim_val)
-                    match_lang[tm_idx] = self.variant_lang[vi]
+        # Search variant embeddings (HA/YO) — may still be loading in background
+        try:
+            if self.variant_embeddings is not None and len(self.variant_embeddings) > 0:
+                var_norms = self.variant_embeddings / (
+                    np.linalg.norm(self.variant_embeddings, axis=1, keepdims=True) + 1e-10
+                )
+                var_sims = np.dot(var_norms, query_norm)
+                for vi, sim_val in enumerate(var_sims):
+                    tm_idx = self.variant_to_trademark_idx[vi]
+                    if sim_val > best_sim.get(tm_idx, -1):
+                        best_sim[tm_idx] = float(sim_val)
+                        match_lang[tm_idx] = self.variant_lang[vi]
+        except Exception:
+            pass  # Variant index not ready yet, use primary only
 
         # Sort by best similarity and take top_k
         sorted_indices = sorted(best_sim.keys(), key=lambda i: best_sim[i], reverse=True)[:top_k]
@@ -488,26 +529,47 @@ async def lifespan(app: FastAPI):
     global model_loader, trademark_db
 
     try:
+        t_start = _time.time()
         logger.info("=" * 80)
         logger.info("[STARTUP] Trademark Registration Decision System")
         logger.info("=" * 80)
+        sys.stdout.flush()
 
+        t0 = _time.time()
         model_loader = HybridModelLoader(models_dir="models")
         model_loader.load_models()
+        logger.info(f"   Models loaded in {_time.time() - t0:.1f}s")
+        sys.stdout.flush()
 
         trademark_db = TrademarkDatabase()
         db_path = Path("data/trademark_database.csv")
         if db_path.exists():
+            t0 = _time.time()
             trademark_db.load(str(db_path), model_loader)
+            logger.info(f"   Database loaded in {_time.time() - t0:.1f}s")
+
+            # Start variant embedding computation in background thread
+            # Server is usable immediately; cross-language search activates when done
+            variant_thread = threading.Thread(
+                target=trademark_db.load_variants_background,
+                args=(model_loader,),
+                daemon=True
+            )
+            variant_thread.start()
         else:
             logger.warning(f"[WARNING] Database not found at {db_path}")
 
         logger.info("=" * 80)
-        logger.info("[SUCCESS] Server ready to accept requests")
+        logger.info(f"[SUCCESS] Server ready in {_time.time() - t_start:.1f}s total")
+        logger.info("   (Cross-language variant index loading in background)")
         logger.info("=" * 80)
+        sys.stdout.flush()
 
     except Exception as e:
         logger.error(f"[ERROR] Startup failed: {e}")
+        import traceback
+        traceback.print_exc()
+        sys.stdout.flush()
         raise
 
     yield
@@ -576,7 +638,11 @@ async def health_check():
             "cnn_loaded": True,
             "svm_loaded": True,
             "semantic_loaded": True,
-            "vocab_size": len(model_loader.tokenizer.word_index) if model_loader.tokenizer else 0
+            "vocab_size": len(model_loader.tokenizer.word_index) if model_loader.tokenizer else 0,
+            "cross_language_ready": (
+                trademark_db is not None
+                and trademark_db.variant_embeddings is not None
+            )
         }
 
     return {
