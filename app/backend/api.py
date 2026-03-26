@@ -24,11 +24,120 @@ import jellyfish
 from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity as sklearn_cosine_similarity
 
+import re
+import unicodedata
+
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+
+# ============================================================================
+# CROSS-LANGUAGE LEXICON & HELPERS
+# ============================================================================
+
+CROSS_LANGUAGE_LEXICON = {
+    "company": {"ha": "kamfani", "yo": "ilé-iṣẹ́", "synonyms": ["business", "corporation", "firm", "enterprise"]},
+    "business": {"ha": "kasuwanci", "yo": "iṣẹ́ owó", "synonyms": ["company", "enterprise", "trade", "commerce"]},
+    "market": {"ha": "kasuwa", "yo": "ọjà", "synonyms": ["marketplace", "bazaar", "store", "shop"]},
+    "store": {"ha": "shago", "yo": "ṣọ́ọ̀bù", "synonyms": ["shop", "outlet", "mart"]},
+    "brand": {"ha": "alama", "yo": "àmì", "synonyms": ["trademark", "label", "logo", "mark"]},
+    "premium": {"ha": "mai kyau", "yo": "iyebíye", "synonyms": ["quality", "superior", "elite", "deluxe", "luxury"]},
+    "super": {"ha": "babba", "yo": "púpọ̀", "synonyms": ["mega", "ultra", "great", "supreme"]},
+    "best": {"ha": "mafi kyau", "yo": "dára jùlọ", "synonyms": ["finest", "top", "premier"]},
+    "gold": {"ha": "zinariya", "yo": "wúrà", "synonyms": ["golden", "premium"]},
+    "coffee": {"ha": "kofi", "yo": "kọ́fí", "synonyms": ["cafe", "caffeine", "java"]},
+    "tea": {"ha": "shayi", "yo": "tii", "synonyms": ["beverage"]},
+    "food": {"ha": "abinci", "yo": "oúnjẹ", "synonyms": ["meal", "cuisine", "dish"]},
+    "restaurant": {"ha": "gidan cin abinci", "yo": "ilé oúnjẹ", "synonyms": ["cafe", "diner", "eatery"]},
+    "tech": {"ha": "fasaha", "yo": "ìmọ̀-ẹrọ", "synonyms": ["technology", "digital", "electronic", "smart"]},
+    "digital": {"ha": "na dijital", "yo": "oníjìtù", "synonyms": ["electronic", "tech", "cyber", "online"]},
+    "smart": {"ha": "mai hankali", "yo": "ológbọ́n", "synonyms": ["intelligent", "clever", "advanced"]},
+    "new": {"ha": "sabon", "yo": "títun", "synonyms": ["fresh", "modern", "novel", "recent"]},
+    "fresh": {"ha": "sabo", "yo": "tuntun", "synonyms": ["new", "crisp", "pure", "natural"]},
+    "natural": {"ha": "na halitta", "yo": "àdáyébá", "synonyms": ["organic", "pure", "authentic"]},
+    "water": {"ha": "ruwa", "yo": "omi", "synonyms": ["aqua", "hydro"]},
+    "king": {"ha": "sarki", "yo": "ọba", "synonyms": ["royal", "crown", "monarch"]},
+    "star": {"ha": "tauraro", "yo": "ìràwọ̀", "synonyms": ["stellar", "astro"]},
+    "lion": {"ha": "zaki", "yo": "kìnnìún", "synonyms": ["leo", "pride"]},
+    "eagle": {"ha": "gaggafa", "yo": "àṣá", "synonyms": ["hawk", "falcon"]},
+    "power": {"ha": "iko", "yo": "agbára", "synonyms": ["energy", "force", "strength"]},
+    "speed": {"ha": "sauri", "yo": "iyara", "synonyms": ["fast", "quick", "rapid", "swift"]},
+    "life": {"ha": "rayuwa", "yo": "ìgbésí ayé", "synonyms": ["living", "vital"]},
+    "health": {"ha": "lafiya", "yo": "ìlera", "synonyms": ["wellness", "medical", "healthy"]},
+    "beauty": {"ha": "kyau", "yo": "ẹwà", "synonyms": ["beautiful", "pretty", "cosmetic"]},
+    "home": {"ha": "gida", "yo": "ilé", "synonyms": ["house", "residence", "domestic"]},
+    "light": {"ha": "haske", "yo": "ìmọ́lẹ̀", "synonyms": ["bright", "glow", "shine"]},
+    "sun": {"ha": "rana", "yo": "oòrùn", "synonyms": ["solar", "sunny"]},
+    "moon": {"ha": "wata", "yo": "oṣùpá", "synonyms": ["lunar"]},
+    "earth": {"ha": "duniya", "yo": "ayé", "synonyms": ["world", "globe", "terra"]},
+    "green": {"ha": "kore", "yo": "àwọ̀ ewé", "synonyms": ["eco", "organic", "natural"]},
+}
+
+_LANG_NAMES = {"ha": "Hausa", "yo": "Yoruba", "en": "English", "primary": "English"}
+_REVERSE_LEXICON: Dict[str, tuple] = {}
+
+
+def _strip_diacritics(text: str) -> str:
+    nfkd = unicodedata.normalize('NFKD', text)
+    return ''.join(c for c in nfkd if not unicodedata.combining(c)).lower()
+
+
+def _build_reverse_lexicon():
+    for en_word, data in CROSS_LANGUAGE_LEXICON.items():
+        for lang in ["ha", "yo"]:
+            translation = data.get(lang, "")
+            if not translation:
+                continue
+            clean_full = _strip_diacritics(translation)
+            if len(clean_full) >= 3:
+                _REVERSE_LEXICON[clean_full] = (en_word, _LANG_NAMES[lang])
+            for part in clean_full.split():
+                if len(part) >= 3:
+                    _REVERSE_LEXICON[part] = (en_word, _LANG_NAMES[lang])
+
+
+_build_reverse_lexicon()
+
+
+def _detect_cross_language_words(text: str) -> List[Dict[str, str]]:
+    words = re.findall(r'\b\w+\b', _strip_diacritics(text))
+    detections = []
+    seen = set()
+    for word in words:
+        if word in _REVERSE_LEXICON and word not in seen:
+            en_word, lang = _REVERSE_LEXICON[word]
+            detections.append({"word": word, "means": en_word, "language": lang})
+            seen.add(word)
+    return detections
+
+
+def _detect_translation_equivalence(text1: str, text2: str) -> List[str]:
+    words1 = set(re.findall(r'\b\w+\b', _strip_diacritics(text1)))
+    words2 = set(re.findall(r'\b\w+\b', _strip_diacritics(text2)))
+    notes = []
+    for w1 in words1:
+        if w1 in _REVERSE_LEXICON:
+            en_word, lang = _REVERSE_LEXICON[w1]
+            if _strip_diacritics(en_word) in words2:
+                notes.append(f"'{w1}' ({lang}) = '{en_word}' (English)")
+                continue
+            for syn in CROSS_LANGUAGE_LEXICON.get(en_word, {}).get("synonyms", []):
+                if _strip_diacritics(syn) in words2:
+                    notes.append(f"'{w1}' ({lang}) ≈ '{syn}' (synonym of '{en_word}')")
+                    break
+        if w1 in CROSS_LANGUAGE_LEXICON:
+            data = CROSS_LANGUAGE_LEXICON[w1]
+            for lang_code in ["ha", "yo"]:
+                trans = data.get(lang_code, "")
+                if trans:
+                    trans_parts = set(_strip_diacritics(trans).split())
+                    if trans_parts & words2:
+                        notes.append(f"'{w1}' (English) = '{trans}' ({_LANG_NAMES[lang_code]})")
+                        break
+    return notes
 
 
 # ============================================================================
@@ -54,6 +163,8 @@ class RegistrationRequest(BaseModel):
 class TrademarkMatch(BaseModel):
     trademark: str
     similarity_score: float
+    matched_language: Optional[str] = None
+    matched_variant: Optional[str] = None
     details: Optional[Dict[str, Any]] = None
 
 
@@ -64,6 +175,7 @@ class TrademarkDecision(BaseModel):
     closest_match: Optional[TrademarkMatch] = None
     top_matches: List[TrademarkMatch] = []
     reason: str
+    cross_language_note: Optional[str] = None
 
 
 class RegistrationResponse(BaseModel):
@@ -200,8 +312,12 @@ class HybridModelLoader:
         label = int(self.svm_model.predict(scaled)[0])
         prob = float(self.svm_model.predict_proba(scaled)[0][1])
 
+        best_lang = "en"
+        best_variant = mark2
+        variant_scores = {"en": round(prob, 4)}
+
         # Also score against HA/YO variants — take the MAX probability
-        for variant in [mark2_ha, mark2_yo]:
+        for variant, lang_code in [(mark2_ha, "ha"), (mark2_yo, "yo")]:
             if variant and variant.strip() and variant.lower() != mark2.lower():
                 try:
                     emb_var = self.encode_text(variant)
@@ -209,9 +325,12 @@ class HybridModelLoader:
                     hybrid_var = np.concatenate([emb1, emb_var, ling_var]).reshape(1, -1)
                     scaled_var = self.scaler.transform(hybrid_var)
                     prob_var = float(self.svm_model.predict_proba(scaled_var)[0][1])
+                    variant_scores[lang_code] = round(prob_var, 4)
                     if prob_var > prob:
                         prob = prob_var
                         label = int(self.svm_model.predict(scaled_var)[0])
+                        best_lang = lang_code
+                        best_variant = variant
                 except Exception:
                     pass
 
@@ -222,7 +341,6 @@ class HybridModelLoader:
             e2_en = self.semantic_model.encode([mark2], convert_to_numpy=True)
             sim_en = float(sklearn_cosine_similarity(e1, e2_en)[0][0])
 
-            # Actual per-language semantic similarities
             if mark2_ha and mark2_ha.lower() != mark2.lower():
                 e2_ha = self.semantic_model.encode([mark2_ha], convert_to_numpy=True)
                 sim_ha = float(sklearn_cosine_similarity(e1, e2_ha)[0][0])
@@ -240,7 +358,9 @@ class HybridModelLoader:
                 "semantic_features": {"similarity_en": round(sim_en, 4), "similarity_ha": round(sim_ha, 4), "similarity_yo": round(sim_yo, 4)},
                 "length_features": {"length_difference": int(ling[7]), "mark1_length": int(ling[8]), "mark2_length": int(ling[9])}
             }
-        return label, prob, details
+
+        match_info = {"best_lang": best_lang, "best_variant": best_variant, "variant_scores": variant_scores}
+        return label, prob, details, match_info
 
 
 class TrademarkDatabase:
@@ -390,39 +510,108 @@ async def check_registration(request: RegistrationRequest):
 
 
 def _evaluate_trademark(name, threshold, top_k):
+    lexicon_detections = _detect_cross_language_words(name)
+
     qe = model_loader.encode_text(name)
     candidates = trademark_db.find_candidates(qe, top_k=max(top_k, 20))
+    seen_indices = {c['index'] for c in candidates}
+
+    # Expanded search: if HA/YO words detected, also search for English equivalents
+    if lexicon_detections:
+        for det in lexicon_detections:
+            expanded = _strip_diacritics(name).replace(det['word'], det['means'])
+            if expanded != _strip_diacritics(name):
+                try:
+                    exp_emb = model_loader.encode_text(expanded)
+                    for ec in trademark_db.find_candidates(exp_emb, top_k=10):
+                        if ec['index'] not in seen_indices:
+                            candidates.append(ec)
+                            seen_indices.add(ec['index'])
+                except Exception:
+                    pass
+
     scored = []
     for c in candidates:
         try:
-            _, prob, det = model_loader.predict(
+            _, prob, det, match_info = model_loader.predict(
                 name, c['trademark'],
                 mark2_ha=c.get('trademark_ha', ''),
                 mark2_yo=c.get('trademark_yo', ''),
                 return_details=True
             )
-            scored.append({'trademark': c['trademark'], 'similarity_score': round(prob, 4), 'details': det})
+            best_lang = match_info['best_lang']
+            best_variant = match_info['best_variant']
+            variant_scores = match_info.get('variant_scores', {})
+
+            equiv_notes = _detect_translation_equivalence(name, c['trademark'])
+            if c.get('trademark_ha'):
+                equiv_notes += _detect_translation_equivalence(name, c['trademark_ha'])
+            if c.get('trademark_yo'):
+                equiv_notes += _detect_translation_equivalence(name, c['trademark_yo'])
+            equiv_notes = list(dict.fromkeys(equiv_notes))
+
+            if det is None:
+                det = {}
+            if best_lang != 'en' and best_variant:
+                det['cross_language'] = {'matched_via': _LANG_NAMES.get(best_lang, best_lang),
+                                          'matched_variant': best_variant, 'variant_scores': variant_scores}
+            elif len(variant_scores) > 1:
+                det['cross_language'] = {'matched_via': 'English (primary)', 'variant_scores': variant_scores}
+            if equiv_notes:
+                det['translation_notes'] = equiv_notes
+
+            scored.append({
+                'trademark': c['trademark'], 'similarity_score': round(prob, 4), 'details': det,
+                'matched_language': _LANG_NAMES.get(best_lang, 'English'),
+                'matched_variant': best_variant if best_lang != 'en' else None,
+            })
         except Exception:
             pass
     scored.sort(key=lambda x: x['similarity_score'], reverse=True)
-    top_m = [TrademarkMatch(trademark=m['trademark'], similarity_score=m['similarity_score']) for m in scored[:top_k]]
+
+    top_m = [TrademarkMatch(trademark=m['trademark'], similarity_score=m['similarity_score'],
+                            matched_language=m.get('matched_language'), matched_variant=m.get('matched_variant'),
+                            details=m.get('details')) for m in scored[:top_k]]
     mx = scored[0]['similarity_score'] if scored else 0.0
     cl = scored[0] if scored else None
+
+    cross_notes = []
+    if lexicon_detections:
+        for d in lexicon_detections:
+            cross_notes.append(f"'{d['word']}' is {d['language']} for '{d['means']}'")
+    if cl:
+        if cl.get('matched_language', 'English') != 'English' and cl.get('matched_variant'):
+            cross_notes.append(f"Strongest match via {cl['matched_language']} variant: \"{cl['matched_variant']}\"")
+        if cl.get('details', {}).get('translation_notes'):
+            cross_notes.extend(cl['details']['translation_notes'])
+    cross_notes = list(dict.fromkeys(cross_notes))
+    cross_language_note = ". ".join(cross_notes) if cross_notes else None
+
     if mx >= threshold:
-        dec, reason = "REJECTED", f"Too similar to '{cl['trademark']}' ({mx*100:.1f}% >= {threshold*100:.0f}%)"
+        dec = "REJECTED"
+        reason = f"Too similar to '{cl['trademark']}' ({mx*100:.1f}% >= {threshold*100:.0f}%)"
+        if cross_language_note:
+            reason += f". Cross-language alert: {cross_language_note}"
     elif cl:
-        dec, reason = "APPROVED", f"Sufficiently unique. Closest: '{cl['trademark']}' at {mx*100:.1f}%"
+        dec = "APPROVED"
+        reason = f"Sufficiently unique. Closest: '{cl['trademark']}' at {mx*100:.1f}%"
+        if cross_language_note:
+            reason += f". Note: {cross_language_note}"
     else:
         dec, reason = "APPROVED", "No similar trademarks found"
-    cm = TrademarkMatch(trademark=cl['trademark'], similarity_score=cl['similarity_score'], details=cl['details']) if cl else None
-    return TrademarkDecision(trademark=name, decision=dec, max_similarity=mx, closest_match=cm, top_matches=top_m, reason=reason)
+
+    cm = TrademarkMatch(trademark=cl['trademark'], similarity_score=cl['similarity_score'],
+                        matched_language=cl.get('matched_language'), matched_variant=cl.get('matched_variant'),
+                        details=cl.get('details')) if cl else None
+    return TrademarkDecision(trademark=name, decision=dec, max_similarity=mx, closest_match=cm,
+                             top_matches=top_m, reason=reason, cross_language_note=cross_language_note)
 
 
 @app.post("/similarity-check", response_model=SimilarityResponse)
 async def check_similarity(request: SimilarityRequest):
     if not model_loader:
         raise HTTPException(status_code=503, detail="Models not loaded")
-    label, prob, details = model_loader.predict(request.mark1, request.mark2, return_details=request.include_details)
+    label, prob, details, _ = model_loader.predict(request.mark1, request.mark2, return_details=request.include_details)
     rl = "HIGH" if prob >= 0.7 else ("MEDIUM" if prob >= 0.4 else "LOW")
     rec = {"HIGH": "High risk of confusion", "MEDIUM": "Moderate risk", "LOW": "Low risk"}[rl]
     return {"label": label, "label_text": "Similar" if label == 1 else "Dissimilar",
