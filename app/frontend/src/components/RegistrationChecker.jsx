@@ -64,7 +64,7 @@ const RegistrationChecker = () => {
   };
 
   const loadExamples = () => {
-    setTrademarks(['SuperCoffee', 'TechSmart', 'MOVIMAX']);
+    setTrademarks(['Awo Tie', 'Thick Plaza', 'Matashi Brace']);
     setResults(null);
     setError(null);
   };
@@ -177,7 +177,7 @@ const RegistrationChecker = () => {
             onClick={loadExamples}
             className="px-4 py-2 text-sm bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition-colors border border-gray-300"
           >
-            Load sample trademarks: "SuperCoffee", "TechSmart", "MOVIMAX"
+            Load sample trademarks: "Awo Tie", "Thick Plaza", "Matashi Brace"
           </button>
         </div>
       </div>
