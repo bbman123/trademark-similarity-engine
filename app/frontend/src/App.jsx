@@ -35,9 +35,9 @@ function App() {
           </h1>
           <p className="text-lg text-gray-600 max-w-3xl mx-auto mb-6">
             Submit up to 3 trademark names to check against{' '}
-            {apiStatus.data?.database_size
+            {/* {apiStatus.data?.database_size
               ? <span className="font-semibold text-primary-700">{apiStatus.data.database_size.toLocaleString()}</span>
-              : 'thousands of'}{' '}
+              : 'thousands of'}{' '} */}
             existing registered trademarks. Powered by Hybrid CNN+SVM with multilingual analysis.
           </p>
           <ApiStatus status={apiStatus} onRetry={checkApiHealth} />
