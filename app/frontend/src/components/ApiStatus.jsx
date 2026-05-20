@@ -27,7 +27,8 @@ const ApiStatus = ({ status, onRetry }) => {
   return (
     <div className="inline-flex items-center gap-2 px-4 py-2 bg-green-50 border border-green-200 rounded-full text-sm text-green-700">
       <CheckCircle2 className="w-4 h-4" />
-      <span>System Online{dbSize ? ` \u2022 ${dbSize.toLocaleString()} trademarks in database` : ''}</span>
+      {/* <span>System Online{dbSize ? ` \u2022 ${dbSize.toLocaleString()} trademarks in database` : ''}</span> */}
+      <span>System Online</span>
     </div>
   );
 };
